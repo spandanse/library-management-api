@@ -27,6 +27,11 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING(100),
         allowNull: false
       },
+      username: {
+        type: DataTypes.STRING(100),
+        allowNull: false,
+        unique: true
+      },
       email: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -39,6 +44,11 @@ module.exports = (sequelize, DataTypes) => {
       phone: {
         type: DataTypes.STRING(20),
         allowNull: true
+      },
+      registration_date: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW
       }
     },
     {

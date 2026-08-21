@@ -23,6 +23,11 @@ module.exports = {
         type: Sequelize.STRING(100),
         allowNull: false
       },
+      username: {
+        type: Sequelize.STRING(100),
+        allowNull: false,
+        unique: true
+      },
       email: {
         type: Sequelize.STRING(255),
         allowNull: false,
@@ -35,6 +40,11 @@ module.exports = {
       phone: {
         type: Sequelize.STRING(20),
         allowNull: true
+      },
+      registration_date: {
+        type: Sequelize.DATE,
+        allowNull: false,
+        defaultValue: Sequelize.NOW
       },
       createdAt: {
         type: Sequelize.DATE,
