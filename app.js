@@ -1,4 +1,10 @@
 const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const fs = require("fs");
+const path = require("path");
+
 const userRoutes = require("./routes/userRoutes");
 const bookRoutes = require("./routes/bookRoutes");
 const bookCopyRoutes = require("./routes/bookCopyRoutes");
@@ -8,6 +14,20 @@ const statisticsRoutes = require("./routes/statisticsRoutes");
 
 const app = express();
 
+const logDirectory = path.join(__dirname, "logs");
+
+if (!fs.existsSync(logDirectory)) {
+  fs.mkdirSync(logDirectory);
+}
+
+const accessLogStream = fs.createWriteStream(
+  path.join(logDirectory, "access.log"),
+  { flags: "a" }
+);
+
+app.use(helmet());
+app.use(cors());
+app.use(morgan("combined", { stream: accessLogStream }));
 app.use(express.json());
 
 app.get("/", (req, res) => {
