@@ -98,69 +98,6 @@ roles
 
 Each book can have multiple physical copies, and each copy has a unique ID.
 
-## Setup
-
-### 1. Clone the repository
-
-```bash
-git clone <YOUR_GITHUB_REPOSITORY_URL>
-cd library-management-api
-```
-
-### 2. Install dependencies
-
-```bash
-npm install
-```
-
-### 3. Configure environment variables
-
-Create a `.env` file:
-
-```env
-PORT=3000
-
-DB_USERNAME=postgres
-DB_PASSWORD=your_password
-DB_NAME=library_management_db
-DB_HOST=localhost
-DB_PORT=5432
-
-JWT_ACCESS_SECRET=your_access_secret
-JWT_REFRESH_SECRET=your_refresh_secret
-```
-
-### 4. Create the database
-
-Create the PostgreSQL database:
-
-```text
-library_management_db
-```
-
-### 5. Run migrations
-
-```bash
-npx sequelize-cli db:migrate
-```
-
-### 6. Run seeders
-
-```bash
-npx sequelize-cli db:seed:all
-```
-
-### 7. Start the server
-
-```bash
-npm start
-```
-
-The API will run on:
-
-```text
-http://localhost:3000
-```
 
 ## API Endpoints
 
@@ -345,12 +282,6 @@ logs/access.log
 
 The `logs/` directory is excluded from Git.
 
-## Database Schema
-
-Database schema designed using:
-
-**Schema Design:** `<YOUR_SCHEMA_DESIGN_LINK>`
-
 ## Testing
 
 The API was tested using Postman.
@@ -371,10 +302,3 @@ Tested areas include:
 * Statistics
 * Validation and error handling
 
-## Git
-
-The project is version controlled using Git with multiple meaningful commits throughout development.
-
-## Repository
-
-**GitHub:** `<YOUR_GITHUB_REPOSITORY_URL>`
