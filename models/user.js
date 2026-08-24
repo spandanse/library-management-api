@@ -14,6 +14,11 @@ module.exports = (sequelize, DataTypes) => {
         foreignKey: "user_id",
         as: "records"
       });
+
+      User.hasMany(models.LoginLog, {
+        foreignKey: "user_id",
+        as: "loginLogs"
+      });
     }
   }
 
@@ -49,7 +54,12 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: false,
         defaultValue: DataTypes.NOW
-      }
+      },
+      login_count: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+}
     },
     {
       sequelize,

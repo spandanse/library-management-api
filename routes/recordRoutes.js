@@ -4,60 +4,60 @@ const authenticate = require("../middleware/authenticate");
 const authorize = require("../middleware/authorize");
 
 const {
-  getBooks,
-  getBook,
-  createBook,
-  updateBook,
-  deleteBook
-} = require("../controllers/bookController");
+  createRecord,
+  getRecords,
+  getRecord,
+  updateRecord,
+  deleteRecord
+} = require("../controllers/recordController");
 
 const {
-  validateBook,
-  validateUpdateBook
-} = require("../middleware/validateBook");
+  validateCreateRecord,
+  validateUpdateRecord
+} = require("../middleware/validateRecord");
 
 const router = express.Router();
 
-// Get all books
+// Get all records
 router.get(
   "/",
   authenticate,
   authorize("Librarian", "Student", "Faculty"),
-  getBooks
+  getRecords
 );
 
-// Get one book
+// Get one record
 router.get(
   "/:id",
   authenticate,
   authorize("Librarian", "Student", "Faculty"),
-  getBook
+  getRecord
 );
 
-// Create book - Librarian only
+// Issue book - Librarian only
 router.post(
   "/",
   authenticate,
   authorize("Librarian"),
-  validateBook,
-  createBook
+  validateCreateRecord,
+  createRecord
 );
 
-// Update book - Librarian only
+// Return book - Librarian only
 router.put(
   "/:id",
   authenticate,
   authorize("Librarian"),
-  validateUpdateBook,
-  updateBook
+  validateUpdateRecord,
+  updateRecord
 );
 
-// Delete book - Librarian only
+// Delete record - Librarian only
 router.delete(
   "/:id",
   authenticate,
   authorize("Librarian"),
-  deleteBook
+  deleteRecord
 );
 
 module.exports = router;

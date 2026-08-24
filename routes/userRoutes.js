@@ -1,21 +1,61 @@
 const express = require("express");
 
+const router = express.Router();
+
 const {
   getUsers,
   getUser,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  getToken,
+  refreshToken,
+  logout
 } = require("../controllers/userController");
 
-const validateUser = require("../middleware/validateUser");
+const authenticate = require("../middleware/authenticate");
+const authorize = require("../middleware/authorize");
 
-const router = express.Router();
+// Public authentication routes
+router.post("/getToken", getToken);
+router.post("/refreshToken", refreshToken);
 
-router.get("/", getUsers);
-router.get("/:id", getUser);
-router.post("/", validateUser, createUser);
-router.put("/:id", validateUser, updateUser);
-router.delete("/:id", deleteUser);
+// Protected routes
+router.get(
+  "/",
+  authenticate,
+  authorize("Librarian"),
+  getUsers
+);
+
+router.get(
+  "/:id",
+  authenticate,
+  authorize("Librarian"),
+  getUser
+);
+
+router.post(
+  "/",
+  authenticate,
+  authorize("Librarian"),
+  createUser
+);
+
+router.put(
+  "/:id",
+  authenticate,
+  authorize("Librarian"),
+  updateUser
+);
+
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("Librarian"),
+  deleteUser
+);
+
+router.post("/logout", authenticate, logout);
 
 module.exports = router;

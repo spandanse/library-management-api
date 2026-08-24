@@ -1,5 +1,8 @@
 const express = require("express");
 
+const authenticate = require("../middleware/authenticate");
+const authorize = require("../middleware/authorize");
+
 const {
   getBookCopies,
   getBookCopy,
@@ -15,12 +18,46 @@ const {
 
 const router = express.Router();
 
-router.get("/book/:bookId", getBookCopies);
-router.get("/:id", getBookCopy);
+// Get all copies of a particular book
+router.get(
+  "/book/:bookId",
+  authenticate,
+  authorize("Librarian", "Student", "Faculty"),
+  getBookCopies
+);
 
-router.post("/", validateCreateBookCopy, createBookCopy);
-router.put("/:id", validateUpdateBookCopy, updateBookCopy);
+// Get one book copy
+router.get(
+  "/:id",
+  authenticate,
+  authorize("Librarian", "Student", "Faculty"),
+  getBookCopy
+);
 
-router.delete("/:id", deleteBookCopy);
+// Create book copy - Librarian only
+router.post(
+  "/",
+  authenticate,
+  authorize("Librarian"),
+  validateCreateBookCopy,
+  createBookCopy
+);
+
+// Update book copy - Librarian only
+router.put(
+  "/:id",
+  authenticate,
+  authorize("Librarian"),
+  validateUpdateBookCopy,
+  updateBookCopy
+);
+
+// Delete book copy - Librarian only
+router.delete(
+  "/:id",
+  authenticate,
+  authorize("Librarian"),
+  deleteBookCopy
+);
 
 module.exports = router;

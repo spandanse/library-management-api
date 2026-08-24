@@ -1,13 +1,98 @@
-const { Book, BookCopy } = require("../models");
+const { Book, BookCopy, sequelize } = require("../models");
+
+const { Op } = require("sequelize");
 
 const getBooks = async (req, res) => {
   try {
+    const {
+      search = {},
+      filter = {},
+      sort = {}
+    } = req.body || {};
+
+    const where = {};
+
+    // Search by book name/title
+    if (search.name) {
+      where.title = {
+        [Op.iLike]: `%${search.name}%`
+      };
+    }
+
+    // Filter by subject
+    if (filter.subject) {
+      where.subject = {
+        [Op.iLike]: `%${filter.subject}%`
+      };
+    }
+
+    // Allowed sorting fields
+    const sortFields = {
+      name: "title"
+    };
+
+    const order = [];
+
+    if (sort.name) {
+      const direction =
+        sort.name.toLowerCase() === "desc"
+          ? "DESC"
+          : "ASC";
+
+      order.push(["title", direction]);
+    }
+
+    // Sort by available copies
+    if (sort.copies_available) {
+      const direction =
+        sort.copies_available.toLowerCase() === "desc"
+          ? "DESC"
+          : "ASC";
+
+      order.push([
+        sequelize.literal(`
+          (
+            SELECT COUNT(*)
+            FROM book_copies AS bc
+            WHERE bc.book_id = "Book"."id"
+            AND bc.status = 'available'
+          )
+        `),
+        direction
+      ]);
+    }
+
+    // Default sorting
+    if (order.length === 0) {
+      order.push(["id", "ASC"]);
+    }
+
     const books = await Book.findAll({
+      where,
+
+      attributes: {
+        include: [
+          [
+            sequelize.literal(`
+              (
+                SELECT COUNT(*)
+                FROM book_copies AS bc
+                WHERE bc.book_id = "Book"."id"
+                AND bc.status = 'available'
+              )
+            `),
+            "copies_available"
+          ]
+        ]
+      },
+
       include: {
         model: BookCopy,
         as: "copies",
         attributes: ["id", "status"]
-      }
+      },
+
+      order
     });
 
     res.status(200).json(books);
