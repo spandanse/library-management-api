@@ -1,6 +1,6 @@
 # Library Management API
 
-A RESTful Library Management System API built with **Node.js, Express.js, PostgreSQL, Sequelize ORM, JWT, and bcrypt**.
+A RESTful Library Management System built with **Node.js, Express.js, PostgreSQL, Sequelize ORM, JWT, bcrypt, Docker, Docker Compose, and Nginx**.
 
 ## Tech Stack
 
@@ -15,6 +15,9 @@ A RESTful Library Management System API built with **Node.js, Express.js, Postgr
 * CORS
 * Helmet
 * Morgan
+* Docker
+* Docker Compose
+* Nginx
 * Postman
 
 ## Features
@@ -22,27 +25,32 @@ A RESTful Library Management System API built with **Node.js, Express.js, Postgr
 * Books CRUD
 * Book copies management
 * Users CRUD
-* Records (book lending) CRUD
-* Payments CRUD
-* Book search, filter, and sort
-* User search, filter, and sort
+* Book lending/records management
+* Payments
+* Book search, filtering, and sorting
+* User search, filtering, and sorting
 * JWT authentication
 * Access and refresh tokens
 * Role-based authorization
+* Logout with token revocation
 * Login tracking
 * Statistics API
-* PostgreSQL database with Sequelize migrations and seeders
-* Request logging to `logs/access.log`
+* Request logging
+* Sequelize migrations and seeders
+* PostgreSQL data persistence
+* Dockerized API and database
+* Nginx reverse proxy
+* Simple frontend served through Nginx
 
 ## User Roles
 
 The system supports three roles:
 
-* Librarian
-* Student
-* Faculty
+* **Librarian**
+* **Student**
+* **Faculty**
 
-Librarians have full CRUD access. Students and Faculty have restricted read access according to the implemented authorization rules.
+Librarians have administrative CRUD access, while Student and Faculty access is restricted according to the implemented authorization rules.
 
 ## Project Structure
 
@@ -53,6 +61,8 @@ library-management-api/
 ├── middleware/
 ├── migrations/
 ├── models/
+├── nginx/
+│   └── default.conf
 ├── routes/
 ├── seeders/
 ├── services/
@@ -62,6 +72,9 @@ library-management-api/
 ├── .env
 ├── .env.example
 ├── .gitignore
+├── .dockerignore
+├── Dockerfile
+├── compose.yaml
 ├── app.js
 ├── server.js
 ├── package.json
@@ -72,7 +85,7 @@ library-management-api/
 
 PostgreSQL is used as the database and Sequelize is used as the ORM.
 
-Main tables:
+Main tables include:
 
 ```text
 roles
@@ -82,6 +95,7 @@ book_copies
 records
 payments
 revoked_tokens
+login_logs
 ```
 
 ### Relationships
@@ -96,8 +110,7 @@ roles
                     └──< payments
 ```
 
-Each book can have multiple physical copies, and each copy has a unique ID.
-
+Each book can have multiple physical copies, and each copy has its own unique ID.
 
 ## API Endpoints
 
@@ -154,8 +167,6 @@ DELETE /records/:id
 GET    /payments
 GET    /payments/:id
 POST   /payments
-PUT    /payments/:id
-DELETE /payments/:id
 ```
 
 ### Statistics
@@ -164,7 +175,7 @@ DELETE /payments/:id
 GET /statistics
 ```
 
-The statistics API provides:
+The statistics API provides information such as:
 
 * Highest lent book
 * Most active user based on login count
@@ -177,44 +188,9 @@ The statistics API provides:
 
 ## Search, Filter and Sort
 
-Users and books support search, filtering, and sorting through the request body.
+Books and users support search, filtering, and sorting.
 
-### Users
-
-```json
-{
-  "search": {
-    "name": "John"
-  },
-  "filter": {
-    "category": "Student"
-  },
-  "sort": {
-    "name": "asc",
-    "registration_date": "desc"
-  }
-}
-```
-
-### Books
-
-```json
-{
-  "search": {
-    "name": "Database"
-  },
-  "filter": {
-    "subject": "Computer Science"
-  },
-  "sort": {
-    "name": "asc"
-  }
-}
-```
-
-Only allowed fields are used for sorting.
-
-## Authentication
+### Authentication
 
 Login using:
 
@@ -222,24 +198,13 @@ Login using:
 POST /users/getToken
 ```
 
-Example:
-
-```json
-{
-  "username": "admin",
-  "password": "password"
-}
-```
-
-The API returns an access token and refresh token.
-
 Protected endpoints require:
 
 ```text
 Authorization: Bearer <access_token>
 ```
 
-Refresh tokens can be used through:
+Refresh tokens are handled through:
 
 ```text
 POST /users/refreshToken
@@ -250,55 +215,352 @@ POST /users/refreshToken
 Role-based authorization is implemented using middleware.
 
 ```text
+Request
+   ↓
 authenticate
-      ↓
+   ↓
 authorize("Librarian")
-      ↓
-protected endpoint
+   ↓
+Controller
+   ↓
+Database
 ```
 
-Librarians can perform CRUD operations, while Student and Faculty access is restricted according to the implemented rules.
+The `authenticate` middleware verifies the JWT access token.
+
+The `authorize` middleware checks whether the authenticated user's role is allowed to access the endpoint.
 
 ## Logout and Token Revocation
 
-Access and refresh tokens can be revoked during logout.
+The application supports token revocation.
 
-Revoked token JTIs are stored in the `revoked_tokens` table along with:
+When a token is revoked, its JTI, token type, and expiration time are stored in the `revoked_tokens` table.
 
-* Token type
-* Expiration time
-
-This prevents a logged-out access token from being reused before its normal expiry.
+This allows the application to reject a revoked token even if its original expiration time has not been reached.
 
 ## Logging
 
 Morgan is used for HTTP request logging.
 
-Logs are stored in:
+Logs are written to:
 
 ```text
 logs/access.log
 ```
 
-The `logs/` directory is excluded from Git.
+The logs directory is excluded from Git.
+
+## Docker
+
+The application is containerized using Docker.
+
+The Docker setup contains three services:
+
+```text
+                 ┌──────────────┐
+                 │    Nginx     │
+                 │    :80       │
+                 └──────┬───────┘
+                        │
+                  /api requests
+                        │
+                 ┌──────▼───────┐
+                 │     API      │
+                 │   Node.js    │
+                 │    :3000     │
+                 └──────┬───────┘
+                        │
+                        │
+                 ┌──────▼───────┐
+                 │  PostgreSQL  │
+                 │    :5432     │
+                 └──────────────┘
+```
+
+Docker Compose defines and runs these services together in a shared Docker network.
+
+### Services
+
+#### PostgreSQL
+
+Uses:
+
+```text
+postgres:18
+```
+
+Database data is persisted using the Docker volume:
+
+```text
+library-db-data
+```
+
+A PostgreSQL healthcheck is used so that the API waits for the database to become healthy before starting.
+
+#### API
+
+The Node.js API is built using the project's `Dockerfile`.
+
+The API communicates with PostgreSQL using the Docker service name:
+
+```text
+postgres
+```
+
+rather than `localhost`.
+
+#### Nginx
+
+Nginx acts as the reverse proxy and frontend server.
+
+It:
+
+* Serves the frontend at `/`
+* Forwards `/api/*` requests to the API container
+* Provides a single entry point through port `80`
+
+For example:
+
+```text
+http://localhost/
+```
+
+serves the frontend.
+
+```text
+http://localhost/api/books
+```
+
+is forwarded by Nginx to the API.
+
+This type of Node.js + Nginx multi-container architecture is also demonstrated in Docker's official examples.
+
+## Running with Docker
+
+### Prerequisites
+
+Install Docker and Docker Compose.
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+```
+
+### Setup
+
+Clone the repository:
+
+```bash
+git clone <repository-url>
+cd library-management-api
+```
+
+Create the environment file:
+
+```bash
+cp .env.example .env
+```
+
+Update `.env` with the required database and JWT configuration.
+
+### Start the application
+
+```bash
+docker compose up -d --build
+```
+
+Check the running containers:
+
+```bash
+docker compose ps
+```
+
+The application should contain:
+
+```text
+postgres
+api
+nginx
+```
+
+### Run migrations
+
+For a new database:
+
+```bash
+docker compose exec api npx sequelize-cli db:migrate
+```
+
+### Run seeders
+
+```bash
+docker compose exec api npx sequelize-cli db:seed:all
+```
+
+### Open the application
+
+Frontend:
+
+```text
+http://localhost
+```
+
+API through Nginx:
+
+```text
+http://localhost/api/books
+```
+
+The Docker workflow makes the application reproducible across environments by defining the application services and their configuration in Docker files and Compose.
+
+## Useful Docker Commands
+
+Start the application:
+
+```bash
+docker compose up -d
+```
+
+Build and start:
+
+```bash
+docker compose up -d --build
+```
+
+Stop containers:
+
+```bash
+docker compose down
+```
+
+View containers:
+
+```bash
+docker compose ps
+```
+
+View API logs:
+
+```bash
+docker compose logs api
+```
+
+View Nginx logs:
+
+```bash
+docker compose logs nginx
+```
+
+View PostgreSQL logs:
+
+```bash
+docker compose logs postgres
+```
+
+Follow logs:
+
+```bash
+docker compose logs -f
+```
 
 ## Testing
 
-The API was tested using Postman.
+The API was tested using Postman and curl.
 
 Tested areas include:
 
 * User CRUD
 * Book CRUD
 * Book copy operations
-* Record/lending operations
-* Payment CRUD
-* Search, filter, and sort
+* Lending/record operations
+* Payments
+* Search, filtering, and sorting
 * Login
 * Access token authentication
 * Refresh token
 * Logout and token revocation
 * Role-based authorization
 * Statistics
-* Validation and error handling
+* Validation
+* Error handling
+* Docker container communication
+* Nginx reverse proxy
+* Frontend-to-API communication
 
+## Development
+
+For code changes to the Dockerized application, rebuild the API image when required:
+
+```bash
+docker compose up -d --build
+```
+
+Check service status:
+
+```bash
+docker compose ps
+```
+
+Check API logs:
+
+```bash
+docker compose logs api
+```
+
+## Environment Variables
+
+The project uses environment variables for configuration and secrets.
+
+Example:
+
+```env
+PORT=3000
+
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=library_management_db
+DB_HOST=postgres
+DB_PORT=5432
+
+JWT_ACCESS_SECRET=your_access_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+```
+
+Do not commit the actual `.env` file or production secrets to GitHub.
+
+## Architecture
+
+```text
+                         Browser
+                            │
+                            │ HTTP :80
+                            ▼
+                     ┌─────────────┐
+                     │    Nginx    │
+                     │   :80       │
+                     └──────┬──────┘
+                            │
+                ┌───────────┴───────────┐
+                │                       │
+                ▼                       ▼
+          Frontend                  /api/*
+                                      │
+                                      ▼
+                               ┌─────────────┐
+                               │ Node/Express │
+                               │    API       │
+                               │    :3000     │
+                               └──────┬──────┘
+                                      │
+                                      ▼
+                               ┌─────────────┐
+                               │ PostgreSQL  │
+                               │    :5432     │
+                               └─────────────┘
+```
+
+## Author
+
+**Spandan Sen**
