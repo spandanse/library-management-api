@@ -36,6 +36,13 @@ app.get("/", (req, res) => {
   });
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    message: "Library API is running"
+  });
+});
+
 app.use("/users", userRoutes);
 app.use("/books", bookRoutes);
 app.use("/book-copies", bookCopyRoutes);

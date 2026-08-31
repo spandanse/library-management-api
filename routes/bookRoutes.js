@@ -18,13 +18,8 @@ const {
 
 const router = express.Router();
 
-// Get all books
-router.get(
-  "/",
-  authenticate,
-  authorize("Librarian", "Student", "Faculty"),
-  getBooks
-);
+// Get all books - Public
+router.get("/", getBooks);
 
 // Get one book
 router.get(
