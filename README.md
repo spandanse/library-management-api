@@ -1,12 +1,12 @@
 # Library Management API
 
-A RESTful Library Management System built with **Node.js, Express.js, PostgreSQL, Sequelize ORM, JWT, bcrypt, Docker, Docker Compose, and Nginx**.
+A RESTful Library Management System built with **Node.js, Express.js, PostgreSQL, Sequelize ORM, JWT, bcrypt, Docker, Docker Compose, Nginx, and PM2**.
 
 ## Tech Stack
 
 * Node.js
 * Express.js
-* PostgreSQL
+* PostgreSQL 18
 * Sequelize ORM
 * JWT
 * bcrypt
@@ -18,6 +18,7 @@ A RESTful Library Management System built with **Node.js, Express.js, PostgreSQL
 * Docker
 * Docker Compose
 * Nginx
+* PM2
 * Postman
 
 ## Features
@@ -39,8 +40,12 @@ A RESTful Library Management System built with **Node.js, Express.js, PostgreSQL
 * Sequelize migrations and seeders
 * PostgreSQL data persistence
 * Dockerized API and database
+* PostgreSQL healthcheck
+* API healthcheck
 * Nginx reverse proxy
-* Simple frontend served through Nginx
+* Frontend served through Nginx
+* PM2 process management
+* Graceful server shutdown
 
 ## User Roles
 
@@ -62,6 +67,8 @@ library-management-api/
 ├── migrations/
 ├── models/
 ├── nginx/
+│   ├── conf.d/
+│   │   └── library.conf
 │   └── default.conf
 ├── routes/
 ├── seeders/
@@ -75,6 +82,7 @@ library-management-api/
 ├── .dockerignore
 ├── Dockerfile
 ├── compose.yaml
+├── ecosystem.config.js
 ├── app.js
 ├── server.js
 ├── package.json
@@ -186,11 +194,11 @@ The statistics API provides information such as:
 * Total books
 * Total currently lent books
 
-## Search, Filter and Sort
+## Search, Filtering and Sorting
 
-Books and users support search, filtering, and sorting.
+Books and users support search, filtering, and sorting functionality.
 
-### Authentication
+## Authentication
 
 Login using:
 
@@ -198,7 +206,7 @@ Login using:
 POST /users/getToken
 ```
 
-Protected endpoints require:
+Protected endpoints require an access token:
 
 ```text
 Authorization: Bearer <access_token>
@@ -209,6 +217,8 @@ Refresh tokens are handled through:
 ```text
 POST /users/refreshToken
 ```
+
+The application uses separate access and refresh tokens.
 
 ## Authorization
 
@@ -238,6 +248,12 @@ When a token is revoked, its JTI, token type, and expiration time are stored in 
 
 This allows the application to reject a revoked token even if its original expiration time has not been reached.
 
+## Login Tracking
+
+User login activity is tracked and stored in the `login_logs` table.
+
+The login information is also used by the statistics API to determine the most active user based on login count.
+
 ## Logging
 
 Morgan is used for HTTP request logging.
@@ -250,112 +266,358 @@ logs/access.log
 
 The logs directory is excluded from Git.
 
-## Docker
+## Health Check
 
-The application is containerized using Docker.
-
-The Docker setup contains three services:
+The API exposes a health endpoint:
 
 ```text
-                 ┌──────────────┐
-                 │    Nginx     │
-                 │    :80       │
-                 └──────┬───────┘
-                        │
-                  /api requests
-                        │
-                 ┌──────▼───────┐
-                 │     API      │
-                 │   Node.js    │
-                 │    :3000     │
-                 └──────┬───────┘
-                        │
-                        │
-                 ┌──────▼───────┐
-                 │  PostgreSQL  │
-                 │    :5432     │
-                 └──────────────┘
+GET /health
 ```
 
-Docker Compose defines and runs these services together in a shared Docker network.
+The endpoint is used by Docker Compose to determine whether the API container is healthy.
 
-### Services
+The Docker healthcheck executes a request against:
 
-#### PostgreSQL
+```text
+http://localhost:3000/health
+```
 
-Uses:
+The API container is considered healthy when the endpoint returns HTTP status `200`.
+
+## Server Startup
+
+The application starts by first authenticating the Sequelize database connection.
+
+The startup flow is:
+
+```text
+Start Node.js
+     ↓
+Load environment variables
+     ↓
+Authenticate Sequelize
+     ↓
+Database connected
+     ↓
+Start Express server
+     ↓
+Server listening on port 3000
+```
+
+The server also sends a `ready` message when running under a process manager that supports ready signaling.
+
+## Graceful Shutdown
+
+The server handles:
+
+```text
+SIGINT
+SIGTERM
+```
+
+During shutdown:
+
+```text
+Receive shutdown signal
+        ↓
+Stop accepting new requests
+        ↓
+Close HTTP server
+        ↓
+Close Sequelize connection
+        ↓
+Exit process
+```
+
+This ensures that the HTTP server and database connection are closed cleanly.
+
+## PM2
+
+PM2 is configured using:
+
+```text
+ecosystem.config.js
+```
+
+Current configuration:
+
+```text
+Application name: library-api
+Script: ./server.js
+Instances: 1
+Execution mode: fork
+Auto restart: enabled
+Restart delay: 3000 ms
+Maximum memory: 300 MB
+Kill timeout: 5000 ms
+Ready signal: enabled
+Listen timeout: 5000 ms
+```
+
+The configuration can be started using:
+
+```bash
+pm2 start ecosystem.config.js
+```
+
+Check the process:
+
+```bash
+pm2 status
+```
+
+View logs:
+
+```bash
+pm2 logs library-api
+```
+
+Restart:
+
+```bash
+pm2 restart library-api
+```
+
+Stop:
+
+```bash
+pm2 stop library-api
+```
+
+Delete the process:
+
+```bash
+pm2 delete library-api
+```
+
+## Docker Architecture
+
+The application uses Docker Compose to run three services:
+
+```text
+                    ┌──────────────────┐
+                    │      Browser     │
+                    └────────┬─────────┘
+                             │
+                       localhost:8090
+                             │
+                    ┌────────▼─────────┐
+                    │      Nginx       │
+                    │      :8090       │
+                    └────────┬─────────┘
+                             │
+                    /api/*   │
+                             ▼
+                    ┌──────────────────┐
+                    │    Node.js API   │
+                    │      :3000       │
+                    └────────┬─────────┘
+                             │
+                             ▼
+                    ┌──────────────────┐
+                    │    PostgreSQL    │
+                    │      :5432       │
+                    └──────────────────┘
+```
+
+The three Docker Compose services are:
+
+```text
+postgres
+api
+nginx
+```
+
+All three services communicate through the Docker network:
+
+```text
+library-network
+```
+
+## PostgreSQL Container
+
+The database service uses:
 
 ```text
 postgres:18
 ```
 
-Database data is persisted using the Docker volume:
+The database is configured using:
+
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=${DB_PASSWORD}
+POSTGRES_DB=library_management_db
+```
+
+Database storage is persisted using the Docker volume:
 
 ```text
 library-db-data
 ```
 
-A PostgreSQL healthcheck is used so that the API waits for the database to become healthy before starting.
+The database uses a healthcheck:
 
-#### API
+```text
+pg_isready -U postgres -d library_management_db
+```
 
-The Node.js API is built using the project's `Dockerfile`.
+The API depends on PostgreSQL being healthy before it starts.
 
-The API communicates with PostgreSQL using the Docker service name:
+## API Container
+
+The API is built using the project's `Dockerfile`.
+
+The API receives environment variables from:
+
+```text
+.env
+```
+
+Docker Compose overrides the database host with:
+
+```env
+DB_HOST=postgres
+```
+
+The API therefore connects to the PostgreSQL container using the Docker Compose service name:
 
 ```text
 postgres
 ```
 
-rather than `localhost`.
+rather than:
 
-#### Nginx
+```text
+localhost
+```
 
-Nginx acts as the reverse proxy and frontend server.
+The API runs internally on:
 
-It:
+```text
+3000
+```
 
-* Serves the frontend at `/`
-* Forwards `/api/*` requests to the API container
-* Provides a single entry point through port `80`
+The API container also has a healthcheck using:
+
+```text
+GET http://localhost:3000/health
+```
+
+The Nginx service waits for the API service to become healthy before starting.
+
+## Nginx
+
+Nginx acts as both:
+
+* Frontend web server
+* Reverse proxy for the API
+
+Nginx listens on:
+
+```text
+8090
+```
+
+The Docker port mapping is:
+
+```text
+8090:8090
+```
+
+### Frontend
+
+The frontend is mounted into the Nginx container from:
+
+```text
+/home/user-spandan-sen/Documents/bookFrontend
+```
+
+and served from:
+
+```text
+/usr/share/nginx/html
+```
+
+The frontend is available at:
+
+```text
+http://localhost:8090/
+```
+
+### API Proxy
+
+Requests beginning with:
+
+```text
+/api/
+```
+
+are forwarded to:
+
+```text
+http://api:3000/
+```
 
 For example:
 
 ```text
-http://localhost/
+http://localhost:8090/api/books
 ```
 
-serves the frontend.
+is forwarded by Nginx to the Node.js API container.
+
+The Nginx proxy also forwards request information using headers such as:
 
 ```text
-http://localhost/api/books
+Host
+X-Real-IP
+X-Forwarded-For
+X-Forwarded-Proto
 ```
 
-is forwarded by Nginx to the API.
+## Docker Service Dependencies
 
-This type of Node.js + Nginx multi-container architecture is also demonstrated in Docker's official examples.
+The startup order is controlled using Docker healthchecks.
+
+```text
+PostgreSQL
+    ↓
+PostgreSQL healthcheck
+    ↓
+API starts
+    ↓
+API healthcheck
+    ↓
+Nginx starts
+```
+
+This prevents the API from starting before PostgreSQL is ready and prevents Nginx from starting before the API is healthy.
 
 ## Running with Docker
 
 ### Prerequisites
 
-Install Docker and Docker Compose.
+Install:
 
-Verify:
+* Docker
+* Docker Compose
+
+Verify the installation:
 
 ```bash
 docker --version
 docker compose version
 ```
 
-### Setup
-
-Clone the repository:
+### Clone the Repository
 
 ```bash
 git clone <repository-url>
 cd library-management-api
 ```
+
+### Environment Configuration
 
 Create the environment file:
 
@@ -365,19 +627,38 @@ cp .env.example .env
 
 Update `.env` with the required database and JWT configuration.
 
-### Start the application
+Example:
+
+```env
+PORT=3000
+
+DB_USER=postgres
+DB_PASSWORD=your_password
+DB_NAME=library_management_db
+DB_HOST=postgres
+DB_PORT=5432
+
+JWT_ACCESS_SECRET=your_access_secret
+JWT_REFRESH_SECRET=your_refresh_secret
+```
+
+Do not commit the actual `.env` file or production secrets to GitHub.
+
+### Start the Application
+
+Build the images and start all services:
 
 ```bash
 docker compose up -d --build
 ```
 
-Check the running containers:
+Check the services:
 
 ```bash
 docker compose ps
 ```
 
-The application should contain:
+The services should include:
 
 ```text
 postgres
@@ -385,7 +666,7 @@ api
 nginx
 ```
 
-### Run migrations
+### Run Migrations
 
 For a new database:
 
@@ -393,27 +674,31 @@ For a new database:
 docker compose exec api npx sequelize-cli db:migrate
 ```
 
-### Run seeders
+### Run Seeders
 
 ```bash
 docker compose exec api npx sequelize-cli db:seed:all
 ```
 
-### Open the application
+### Open the Application
 
 Frontend:
 
 ```text
-http://localhost
+http://localhost:8090
 ```
 
 API through Nginx:
 
 ```text
-http://localhost/api/books
+http://localhost:8090/api/books
 ```
 
-The Docker workflow makes the application reproducible across environments by defining the application services and their configuration in Docker files and Compose.
+Health endpoint through Nginx:
+
+```text
+http://localhost:8090/api/health
+```
 
 ## Useful Docker Commands
 
@@ -435,7 +720,7 @@ Stop containers:
 docker compose down
 ```
 
-View containers:
+Check service status:
 
 ```bash
 docker compose ps
@@ -459,15 +744,27 @@ View PostgreSQL logs:
 docker compose logs postgres
 ```
 
-Follow logs:
+Follow all logs:
 
 ```bash
 docker compose logs -f
 ```
 
+Restart a service:
+
+```bash
+docker compose restart api
+```
+
+Rebuild the API after code changes:
+
+```bash
+docker compose up -d --build api
+```
+
 ## Testing
 
-The API was tested using Postman and curl.
+The API was tested using **Postman** and **curl**.
 
 Tested areas include:
 
@@ -486,27 +783,33 @@ Tested areas include:
 * Validation
 * Error handling
 * Docker container communication
+* PostgreSQL connectivity
 * Nginx reverse proxy
 * Frontend-to-API communication
+* API healthcheck
 
 ## Development
 
-For code changes to the Dockerized application, rebuild the API image when required:
+For local development, environment variables can be loaded using `.env`.
+
+The server can be started using the project's configured npm scripts.
+
+For Docker-based development, rebuild the API image after changes when necessary:
 
 ```bash
-docker compose up -d --build
-```
-
-Check service status:
-
-```bash
-docker compose ps
+docker compose up -d --build api
 ```
 
 Check API logs:
 
 ```bash
-docker compose logs api
+docker compose logs -f api
+```
+
+Check the service status:
+
+```bash
+docker compose ps
 ```
 
 ## Environment Variables
@@ -528,38 +831,107 @@ JWT_ACCESS_SECRET=your_access_secret
 JWT_REFRESH_SECRET=your_refresh_secret
 ```
 
-Do not commit the actual `.env` file or production secrets to GitHub.
-
-## Architecture
+When running through Docker Compose, the API database host is set to:
 
 ```text
-                         Browser
-                            │
-                            │ HTTP :80
-                            ▼
-                     ┌─────────────┐
-                     │    Nginx    │
-                     │   :80       │
-                     └──────┬──────┘
-                            │
-                ┌───────────┴───────────┐
-                │                       │
-                ▼                       ▼
-          Frontend                  /api/*
-                                      │
-                                      ▼
-                               ┌─────────────┐
-                               │ Node/Express │
-                               │    API       │
-                               │    :3000     │
-                               └──────┬──────┘
-                                      │
-                                      ▼
-                               ┌─────────────┐
-                               │ PostgreSQL  │
-                               │    :5432     │
-                               └─────────────┘
+postgres
 ```
+
+This is the PostgreSQL service name inside the Docker network.
+
+The actual `.env` file should not be committed to GitHub.
+
+## Complete Architecture
+
+```text
+                              Browser
+                                 │
+                                 │ HTTP :8090
+                                 ▼
+                         ┌───────────────┐
+                         │     Nginx     │
+                         │     :8090     │
+                         └───────┬───────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+                    ▼                         ▼
+               Frontend                   /api/*
+                                              │
+                                              ▼
+                                      ┌───────────────┐
+                                      │ Node/Express  │
+                                      │      API      │
+                                      │     :3000     │
+                                      └───────┬───────┘
+                                              │
+                                              │ Sequelize
+                                              ▼
+                                      ┌───────────────┐
+                                      │  PostgreSQL   │
+                                      │     :5432     │
+                                      └───────────────┘
+
+                         Docker Network:
+                         library-network
+```
+
+## Request Flow
+
+A frontend API request follows this flow:
+
+```text
+Browser
+   │
+   │ GET /api/books
+   ▼
+Nginx :8090
+   │
+   │ proxy_pass
+   ▼
+Node.js API :3000
+   │
+   ▼
+Express Router
+   │
+   ▼
+Middleware
+   │
+   ▼
+Controller
+   │
+   ▼
+Sequelize
+   │
+   ▼
+PostgreSQL
+   │
+   ▼
+JSON Response
+   │
+   ▼
+Nginx
+   │
+   ▼
+Browser
+```
+
+## Security
+
+The application uses several security-related mechanisms:
+
+* JWT authentication
+* Access and refresh tokens
+* Password hashing with bcrypt
+* Role-based authorization
+* Token revocation
+* Joi/request validation
+* Helmet security headers
+* CORS configuration
+* Environment variables for secrets
+* Nginx reverse proxy
+
+Sensitive configuration such as database passwords and JWT secrets is kept outside the source code using environment variables.
 
 ## Author
 
